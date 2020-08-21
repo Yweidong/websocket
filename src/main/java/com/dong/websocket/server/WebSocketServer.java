@@ -2,6 +2,8 @@ package com.dong.websocket.server;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.annotation.*;
+import org.springframework.amqp.rabbit.annotation.Queue;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.PathVariable;
 
@@ -98,7 +100,17 @@ public class WebSocketServer {
         error.printStackTrace();
     }
 
-    
+    /**
+     *
+     * rabbitmq还未完善，测试需注释掉
+     */
+    @RabbitListener(bindings = {
+            @QueueBinding(
+                    value = @Queue,
+                    exchange =@Exchange(value = "dong",type="fanout")
+            )
+    })
+    @RabbitHandler
     @OnMessage
     public void onMessage(@PathParam("roomname") String roomname,String message, Session session) {
         logger.info("收到来自房间"+roomname+"的信息:"+message);
