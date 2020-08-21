@@ -5,3 +5,6 @@ spring:
     username: ems
     password: ems
     virtual-host: /ems
+  thymeleaf:
+    prefix: classpath:/templates/
+    cache: false
