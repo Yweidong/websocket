@@ -1,5 +1,6 @@
 package com.dong.websocket.controller;
 
+import com.dong.websocket.enity.Alonebody;
 import com.dong.websocket.enity.Mybody;
 import com.dong.websocket.utils.JSONChange;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -29,6 +30,23 @@ public class testController {
         try {
             rabbitTemplate.convertAndSend("dongdong","dong-broadcast", JSONChange.objToJson(message));
         } catch (JsonProcessingException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 发送给个人
+     */
+    @GetMapping("/alone")
+    public void sendalone() {
+        Alonebody alonebody = new Alonebody();
+        alonebody.setUserid("1");
+        alonebody.setMessage("hello");
+        alonebody.setRoomname("room1");
+
+        try {
+            rabbitTemplate.convertAndSend("hello",JSONChange.objToJson(alonebody));
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }

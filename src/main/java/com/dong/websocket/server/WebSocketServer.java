@@ -1,5 +1,6 @@
 package com.dong.websocket.server;
 
+import com.dong.websocket.enity.Alonebody;
 import com.dong.websocket.enity.Mybody;
 import com.dong.websocket.utils.JSONChange;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,7 +36,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 public class WebSocketServer {
     private static final Logger logger =LoggerFactory.getLogger(WebSocketServer.class);
     //静态变量，用来记录当前房间在线连接数。应该把它设计成线程安全的。
-    private static Map<String,Integer> map = null;
+    private static final Map<String,Map<String,Session>> map = new HashMap<>();
 
     //concurrent包的线程安全Set
     private static final Map<String, Set<Session>> rooms = new ConcurrentHashMap();
@@ -51,6 +52,7 @@ public class WebSocketServer {
     private String userId="";
 
 
+
     /**
      *
      *建立连接
@@ -61,8 +63,8 @@ public class WebSocketServer {
 
         this.userId = userId;
         this.session = session;
-//
-//        webSocketSet.add(this);
+
+
         if(rooms.containsKey(roomname)) {
             // 房间已存在，直接添加用户到相应的房间
             rooms.get(roomname).add(session);
@@ -74,6 +76,12 @@ public class WebSocketServer {
 
             rooms.put(roomname,room);
         }
+        HashMap<String, Session> map1 = new HashMap<>();
+
+        map1.put(userId,session);
+        map.put(roomname,map1);
+
+
 
 
         try {
@@ -171,12 +179,36 @@ public class WebSocketServer {
 
     /**
      *
-     *发送到具体某个人
+     *发送到具体某个人==需要传房间号和发送用户的id
+     *
      */
-    public static void sendInfo(@PathParam("roomname") String roomname,
-                                String message,@PathParam("userId") String userId,Session session) throws IOException {
 
-        session.getBasicRemote().sendText(message);
+    @RabbitListener(queuesToDeclare={@Queue(value = "hello")})
+    @RabbitHandler
+    public  void sendInfo(String message) throws IOException {
+
+        if(map.size() > 0) {
+            ObjectMapper mapper = new ObjectMapper();
+            Alonebody value = mapper.readValue(message, Alonebody.class);
+            String message1 = value.getMessage();
+            String roomname = value.getRoomname();
+            String userid = value.getUserid();
+
+            // 根据用户id查找初session
+
+            if(map.containsKey(roomname)) {
+                Session session1 = map.get(roomname).get(userid);
+                System.out.println(session1);
+
+                session1.getBasicRemote().sendText(message1);
+            }
+
+
+
+        }else {
+            logger.info("暂无连接");
+        }
+
 
     }
 
