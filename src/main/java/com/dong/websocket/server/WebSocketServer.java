@@ -1,9 +1,15 @@
 package com.dong.websocket.server;
 
+import com.dong.websocket.enity.Mybody;
+import com.dong.websocket.utils.JSONChange;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rabbitmq.client.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.*;
 import org.springframework.amqp.rabbit.annotation.Queue;
+import org.springframework.amqp.support.AmqpHeaders;
+import org.springframework.messaging.handler.annotation.Headers;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.PathVariable;
 
@@ -43,6 +49,7 @@ public class WebSocketServer {
 
     //接收sid
     private String userId="";
+
 
     /**
      *
@@ -102,25 +109,63 @@ public class WebSocketServer {
 
     /**
      *
-     * rabbitmq还未完善，测试需注释掉
+     * 广播  rabbitmq 已初步完善
+     *  【
+     *      1.。。存在问题
+     *      后续加入到房间中的人看不到之前发送的广播信息，之后可以加入redis来解决
+     *  】
      */
     @RabbitListener(bindings = {
             @QueueBinding(
                     value = @Queue,
-                    exchange =@Exchange(value = "dong",type="fanout")
+                    exchange =@Exchange(value = "dongdong",type="direct"),
+                    key = {"dong-broadcast"}
+
             )
     })
     @RabbitHandler
-    @OnMessage
-    public void onMessage(@PathParam("roomname") String roomname,String message, Session session) {
-        logger.info("收到来自房间"+roomname+"的信息:"+message);
-        for (Session session1 : rooms.get(roomname)) {
+
+    /**
+     * 接受广播消息然后发送
+     */
+    public void receivebroad(String message,@Headers Map<String,Object> headers, Channel channel) {
+            onMessage(message);
+            Long deliveryTag = (Long) headers.get(AmqpHeaders.DELIVERY_TAG);
             try {
-                session1.getBasicRemote().sendText(message);//服务器主动推送
+                channel.basicAck(deliveryTag,false);//手动确认消息，，deliverTag记录接受消息 false不批量接受
             } catch (IOException e) {
                 e.printStackTrace();
             }
+    }
+    @OnMessage
+    public void onMessage(String message) {
+
+        String roomname = null;
+        String message1 = null;
+        ObjectMapper mapper = new ObjectMapper();
+
+        try {
+            Mybody mybody = mapper.readValue(message, Mybody.class);
+            roomname = mybody.getRoomname();
+            message1 = mybody.getMessage();
+
+        } catch (IOException e) {
+            e.printStackTrace();
         }
+
+        logger.info("收到来自房间"+roomname+"的信息:"+message1);
+        if(rooms.containsKey(roomname)) {
+            for (Session session1 : rooms.get(roomname)) {
+                try {
+                    session1.getBasicRemote().sendText(message1);//服务器主动推送
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }else {
+            logger.info("房间号【"+roomname+"】不存在");
+        }
+
 
     }
 
