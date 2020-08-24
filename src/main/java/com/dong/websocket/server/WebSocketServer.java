@@ -1,5 +1,6 @@
 package com.dong.websocket.server;
 
+import com.dong.websocket.config.RedisConfig;
 import com.dong.websocket.enity.Alonebody;
 import com.dong.websocket.enity.Mybody;
 import com.dong.websocket.utils.JSONChange;
@@ -10,6 +11,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.*;
 import org.springframework.amqp.rabbit.annotation.Queue;
 import org.springframework.amqp.support.AmqpHeaders;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.messaging.handler.annotation.Headers;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,7 +37,10 @@ import java.util.concurrent.CopyOnWriteArraySet;
 @Component
 
 public class WebSocketServer {
+   @Autowired
+   RedisTemplate redisTemplate;
     private static final Logger logger =LoggerFactory.getLogger(WebSocketServer.class);
+
     //静态变量，用来记录当前房间在线连接数。应该把它设计成线程安全的。
     private static final Map<String,Map<String,Session>> map = new HashMap<>();
 
@@ -151,7 +157,7 @@ public class WebSocketServer {
         String roomname = null;
         String message1 = null;
         ObjectMapper mapper = new ObjectMapper();
-
+        
         try {
             Mybody mybody = mapper.readValue(message, Mybody.class);
             roomname = mybody.getRoomname();
