@@ -126,7 +126,7 @@ public class WebSocketServer {
     @RabbitListener(bindings = {
             @QueueBinding(
                     value = @Queue,
-                    exchange =@Exchange(value = "dongdong",type="direct"),
+                        exchange =@Exchange(value = "dongdong",type="direct"),
                     key = {"dong-broadcast"}
 
             )

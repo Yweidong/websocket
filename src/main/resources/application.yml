@@ -8,3 +8,20 @@ spring:
   thymeleaf:
     prefix: classpath:/templates/
     cache: false
+  redis:
+    host: 123.206.232.137
+    port: 6379
+    database: 1
+    password: Njhykj/388
+    jedis:
+      pool:
+        # 连接池最大连接数（使用负值表示没有限制）
+        max-active: -1
+        max-wait: -1ms
+        # 连接池中的最大空闲连接
+        max-idle: 10
+        # 连接池中的最大空闲连接
+        min-idle: 0
+    lettuce:
+      #连接超时时间（毫秒）
+      shutdown-timeout: 1000ms
