@@ -4,6 +4,7 @@ import com.dong.websocket.config.RedisConfig;
 import com.dong.websocket.enity.Alonebody;
 import com.dong.websocket.enity.Mybody;
 import com.dong.websocket.utils.JSONChange;
+import com.dong.websocket.utils.SpringUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Channel;
 import org.slf4j.Logger;
@@ -12,6 +13,7 @@ import org.springframework.amqp.rabbit.annotation.*;
 import org.springframework.amqp.rabbit.annotation.Queue;
 import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.messaging.handler.annotation.Headers;
 import org.springframework.stereotype.Component;
@@ -35,14 +37,21 @@ import java.util.concurrent.CopyOnWriteArraySet;
  **/
 @ServerEndpoint("/websocket/{roomname}/{userId}")
 @Component
-
+/**
+ * @DependsOn 注解
+ * springboot扫描后的WebSocketServer类，在括号中扫描类springUtil之后执行
+ */
+@DependsOn("springUtil")
 public class WebSocketServer {
-   @Autowired
-   RedisTemplate redisTemplate;
+
+
+    private RedisTemplate redisTemplate = (RedisTemplate) SpringUtil.getBean("redisTemplate");
+
     private static final Logger logger =LoggerFactory.getLogger(WebSocketServer.class);
 
-    //静态变量，用来记录当前房间在线连接数。应该把它设计成线程安全的。
-    private static final Map<String,Map<String,Session>> map = new HashMap<>();
+    //静态变量，用来记录当前房间在线连接数。应该把它设计成线程安全的。session和userid之间的对应关系
+    private static final Map<String,Map<String,Session>> map = new ConcurrentHashMap<>();
+    private static final Map<String,Map<Session,String>> smap = new ConcurrentHashMap<>();
 
     //concurrent包的线程安全Set
     private static final Map<String, Set<Session>> rooms = new ConcurrentHashMap();
@@ -82,21 +91,41 @@ public class WebSocketServer {
 
             rooms.put(roomname,room);
         }
+        /**
+         * 房间中用户id和session之间的映射关系
+         */
         HashMap<String, Session> map1 = new HashMap<>();
-
         map1.put(userId,session);
         map.put(roomname,map1);
-
-
-
-
+        HashMap<Session, String> map2= new HashMap<>();
+        map2.put(session,userId);
+        smap.put(roomname,map2);
+        String key = "unread:"+ roomname +":"+userId;
+        String key1 = "websocket:"+roomname;
         try {
-            sendMessage("连接成功1111");
+
+            if(redisTemplate.opsForList().size(key)>0) {
+                List range = redisTemplate.opsForList().range(key, 0, -1);
+                range.forEach(m->{
+                    sendMessage((String) m);
+                });
+            }else {
+                sendMessage("连接成功1111");
+            }
+//
+
             logger.info("房间号【"+roomname+"】有新的连接, 总数:{"+rooms.get(roomname).size()+"}");
+
 
         }
         catch (Exception e){
             logger.info("websocket IO异常");
+
+        }finally {
+            redisTemplate.delete(key);
+            if(redisTemplate.opsForSet().isMember(key1,userId)) {
+                redisTemplate.opsForSet().remove(key1,userId);
+            }
 
         }
 
@@ -110,7 +139,10 @@ public class WebSocketServer {
     public void onClose(@PathParam("roomname") String roomname,Session session,@PathParam("userId") String userId) {
 
         rooms.get(roomname).remove(session);
-
+        map.get(roomname).remove(userId);
+        smap.get(roomname).remove(session);
+        String key = "websocket:"+roomname;//房间中离线的人
+        redisTemplate.opsForSet().add(key,userId);
         logger.info("房间号【"+roomname+"】中用户【"+userId+"】连接断开, 总数:{"+rooms.get(roomname).size()+"}");
     }
 
@@ -157,7 +189,7 @@ public class WebSocketServer {
         String roomname = null;
         String message1 = null;
         ObjectMapper mapper = new ObjectMapper();
-        
+
         try {
             Mybody mybody = mapper.readValue(message, Mybody.class);
             roomname = mybody.getRoomname();
@@ -166,19 +198,38 @@ public class WebSocketServer {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        if(roomname!=null) {
 
-        logger.info("收到来自房间"+roomname+"的信息:"+message1);
-        if(rooms.containsKey(roomname)) {
-            for (Session session1 : rooms.get(roomname)) {
-                try {
-                    session1.getBasicRemote().sendText(message1);//服务器主动推送
-                } catch (IOException e) {
-                    e.printStackTrace();
+            logger.info("收到来自房间"+roomname+"的信息:"+message1);
+            String key = "websocket:"+roomname;
+            if(rooms.containsKey(roomname)) {
+                for (Session session1 : rooms.get(roomname)) {
+                    try {
+                        String s = smap.get(roomname).get(session1);
+                        if(redisTemplate.opsForSet().size(key)>0) {
+
+                            Set members = redisTemplate.opsForSet().members(key);
+                            String finalRoomname = roomname;
+                            String finalMessage = message1;
+                            members.forEach(m->{
+                                String key1 = "unread:"+ finalRoomname +":"+m;
+                                redisTemplate.opsForList().leftPush(key1, finalMessage);
+                            });
+                        }
+
+
+                        session1.getBasicRemote().sendText(message1);//服务器主动推送
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                 }
+            }else {
+                logger.info("房间号【"+roomname+"】不存在");
             }
         }else {
             logger.info("房间号【"+roomname+"】不存在");
         }
+
 
 
     }
@@ -203,10 +254,13 @@ public class WebSocketServer {
             // 根据用户id查找初session
 
             if(map.containsKey(roomname)) {
-                Session session1 = map.get(roomname).get(userid);
-                System.out.println(session1);
 
-                session1.getBasicRemote().sendText(message1);
+                    Session session1 = map.get(roomname).get(userid);
+
+
+                    session1.getBasicRemote().sendText(message1);
+                
+
             }
 
 
