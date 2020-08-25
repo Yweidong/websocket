@@ -51,7 +51,7 @@ public class WebSocketServer {
 
     //静态变量，用来记录当前房间在线连接数。应该把它设计成线程安全的。session和userid之间的对应关系
     private static final Map<String,Map<String,Session>> map = new ConcurrentHashMap<>();
-    private static final Map<String,Map<Session,String>> smap = new ConcurrentHashMap<>();
+//    private static final Map<String,Map<Session,String>> smap = new ConcurrentHashMap<>();
 
     //concurrent包的线程安全Set
     private static final Map<String, Set<Session>> rooms = new ConcurrentHashMap();
@@ -97,9 +97,7 @@ public class WebSocketServer {
         HashMap<String, Session> map1 = new HashMap<>();
         map1.put(userId,session);
         map.put(roomname,map1);
-        HashMap<Session, String> map2= new HashMap<>();
-        map2.put(session,userId);
-        smap.put(roomname,map2);
+
         String key = "unread:"+ roomname +":"+userId;
         String key1 = "websocket:"+roomname;
         try {
@@ -140,7 +138,7 @@ public class WebSocketServer {
 
         rooms.get(roomname).remove(session);
         map.get(roomname).remove(userId);
-        smap.get(roomname).remove(session);
+
         String key = "websocket:"+roomname;//房间中离线的人
         redisTemplate.opsForSet().add(key,userId);
         logger.info("房间号【"+roomname+"】中用户【"+userId+"】连接断开, 总数:{"+rooms.get(roomname).size()+"}");
@@ -158,7 +156,7 @@ public class WebSocketServer {
      * 广播  rabbitmq 已初步完善
      *  【
      *      1.。。存在问题
-     *      后续加入到房间中的人看不到之前发送的广播信息，之后可以加入redis来解决
+     *      后续加入到房间中的人看不到之前发送的广播信息，之后可以加入redis来解决（已加入redis 8/25）
      *  】
      */
     @RabbitListener(bindings = {
@@ -205,7 +203,7 @@ public class WebSocketServer {
             if(rooms.containsKey(roomname)) {
                 for (Session session1 : rooms.get(roomname)) {
                     try {
-                        String s = smap.get(roomname).get(session1);
+
                         if(redisTemplate.opsForSet().size(key)>0) {
 
                             Set members = redisTemplate.opsForSet().members(key);
@@ -234,43 +232,6 @@ public class WebSocketServer {
 
     }
 
-    /**
-     *
-     *发送到具体某个人==需要传房间号和发送用户的id
-     *
-     */
-
-    @RabbitListener(queuesToDeclare={@Queue(value = "hello")})
-    @RabbitHandler
-    public  void sendInfo(String message) throws IOException {
-
-        if(map.size() > 0) {
-            ObjectMapper mapper = new ObjectMapper();
-            Alonebody value = mapper.readValue(message, Alonebody.class);
-            String message1 = value.getMessage();
-            String roomname = value.getRoomname();
-            String userid = value.getUserid();
-
-            // 根据用户id查找初session
-
-            if(map.containsKey(roomname)) {
-
-                    Session session1 = map.get(roomname).get(userid);
-
-
-                    session1.getBasicRemote().sendText(message1);
-                
-
-            }
-
-
-
-        }else {
-            logger.info("暂无连接");
-        }
-
-
-    }
 
     private void sendMessage(String message) {
         try {
